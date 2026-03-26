@@ -47,3 +47,14 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# data
+data
+
+# kintted files
+*.pdf
+*.html
+
+# environment files
+.vscode
+.venv

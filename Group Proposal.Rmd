@@ -1,0 +1,162 @@
+# Group Topic Proposal - Econ 216
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readr)
+```
+
+## Group Members
+
+Arya, Gayathri, Skylar
+
+## Topic Idea
+
+> In 2-3 sentences, describe the real-world phenomenon you are investigating. What makes it interesting?
+
+Motorcycles are often seen as a cheaper and more efficient form of transportation, but they also carry significantly higher safety risks. This project investigates whether motorcycles are truly economically efficient when accounting for accident rates, fatalities, and associated healthcare costs, making it interesting at the intersection of transportation, public health, and policy.
+
+> Research Questions → List at least 2 specific questions you want to explore with data.
+
+1. How do accident and fatality rates per mile compare between motorcycles and cars?
+2. Do states with stricter helmet laws have fewer motorcycle accidents and fatalities?
+
+## Part 1: Written Proposal - Arya
+
+### Topic and Group Decision
+
+Motorcycles are often seen as a cheaper and more efficient form of transportation, but they also carry significantly higher safety risks. This project is interesting because it investigates whether motorcycles are truly economically efficient when accounting for accident rates, fatalities, and associated healthcare costs, making it interesting at the intersection of transportation, public health, and policy. From this, we can determine which combination of factors leads to the highest fatal motorcycle risk.The other topic we were looking at was if hotter weather increased crime rates in major U.S. cities. However, we decided against this because it would not account for other factors that could be influencing crime rates and thus lead to misleading data representation. We then decided on the topic of motorcycles and how they relate to accidents compared to cars and helmet laws by state because there is a wide data set on these topics that are clearly correlated. This can then allow us to explore which combination of factors leas to the most fatal motorcycle risks.
+
+### Data
+
+The first data set comes from NHTSA (National Highway Traffic Safety Association) and is called the FARS systems (Fatality Analysis Reporting System) which provides data on fatal motor accidents in the US from 1975 to the present and covers all 50 U.S. states. Each crash has many variables such as crash conditions (time, location, weather), vehicle info (type, damage, impact points), driver information (license status, behavior), and person info (age injuries, seatbelt use). The unit of observation is crash level, vehicle level, and person level. The other dataset comes from the FHWA Highway Statistics dataset and ranges from the 1940s to the present and covers all U.S. states. It includes details on transportation usage, infrastructure, safety, and finances. The unit of observation is the state-year level. The FARS data set is more micro-level, covering individual crashes, vehicles, and people, while the FHWA Highway Statistics are more macro-level and cover state totals and yearly summaries.
+
+### Planned Comparisons
+
+We plan to explore how, in the past 10 years, accident and fatality rates per mile compare between motorcycles and cars and if states with stricter helmet laws have fewer motorcycle accidents and fatalities. We expect that these comparisons will reveal that there are more accidents and fatalities because of motorcycles and that states with stricter helmet laws will have fewer accidents and fatalities due to motorcycle crashes. The first question will compare motorcycle accidents and fatalities to car crashes across the entire U.S. as a whole while the second question will compare state accidents and fatalities and see how that correlates to that state's helmet laws. Answering these will then allow us to draw conclusions on the overarching question of which combination of factors leads to the highest fatalities in motorcycle accidents.
+
+## Part 2: Data Confirmation - Skylar
+
+[Source - FARS](https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars)
+
+### Part 2A - Load the Data
+
+Our original data set is extermely large (5.15 GiB), from 1983-2022, with very detailed data tables for each year. Generally, they are about the person, vehicle, environment, and process of the crash. The three core data tables are the `accident.csv`, `vehicle.csv`, and `person.csv`. These three tables are also washed and cleaned into more compact auxiliary tables with all the variables converted into categorical variables (represented by numerica, indexed with an appended text file in the database). The auxiliary tables are named `ACC_AUX.CSV`, `PER_AUX.CSV`, and `VEH_AUX.CSV`.
+
+Here, I will demonstrate the `glimpse()` of 2018's three core data set (accident, vehicle, and person):
+
+```{R}
+fars_2018_acc <- read_csv("data/FARS2018NationalCSV/accident.csv")
+glimpse(fars_2018_acc)
+fars_2018_per <- read_csv("data/FARS2018NationalCSV/person.csv")
+glimpse(fars_2018_per)
+fars_2018_veh <- read_csv("data/FARS2018NationalCSV/vehicle.csv")
+glimpse(fars_2018_veh)
+```
+
+The unit of observation is per accident incident. The data of ealier years are similar, but the number of rows and columns vary slightly. For comparison, below is a glimpse of the same data table for 1990.
+
+The data set includes variables that describes the incident's characteristics in detail: the date and time of the crash, location, weather conditions, road conditions, etc.
+
+```{R}
+fars_1990_acc <- read_csv("data/FARS1990NationalCSV/ACCIDENT.CSV")
+glimpse(fars_1990_acc)
+```
+
+### Part 2B - Variable Section Table
+
+Here are some of the key variables we plan to use in our analysis. Note that most of the character variables can be used as categorical variables. This will be helpful for our further analysis and visualization.
+
+| Variable Name   | Source Dataset       | Type                   | Role in Analysis                                                                          |
+|-----------------|----------------------|------------------------|-------------------------------------------------------------------------------------------|
+| `ST_CASE`       | accident / vehicle / person | Numeric (ID)  | Join key linking crash, vehicle, and person records                                       |
+| `YEAR`          | accident             | Numeric (Discrete)     | Temporal trends in fatality rates across years                                            |
+| `STATENAME`     | accident             | Character              | State name; links to state-level helmet law classifications                               |
+| `FATALS`        | accident             | Numeric (Discrete)     | Primary outcome: number of fatalities per crash                                           |
+| `DRUNK_DR`      | accident             | Numeric (Discrete)     | Count of drunk drivers per crash; control for alcohol as confound                         |
+| `RUR_URBNAME`   | accident             | Character              | "Rural" / "Urban"; compare motorcycle crash risk across settings                          |
+| `FUNC_SYSNAME`  | accident             | Character              | Road class (e.g., "Interstate", "Local"); controls for road type in fatality comparison   |
+| `WEATHERNAME`   | accident             | Character              | Weather conditions (e.g., "Clear", "Rain"); motorcycles more vulnerable to adverse weather |
+| `LGT_CONDNAME`  | accident             | Character              | Light conditions (e.g., "Daylight", "Dark - Not Lighted"); visibility risk for motorcycles |
+| `MAN_COLLNAME`  | accident             | Character              | Manner of collision (e.g., "Front-to-Rear", "Angle"); characterize crash type             |
+| `DAY_WEEKNAME`  | accident             | Character              | Day of week; identify temporal patterns in motorcycle crash risk                          |
+| `HOURNAME`      | accident             | Character              | Hour of crash; analyze time-of-day risk patterns                                          |
+| `BODY_TYPNAME`  | vehicle              | Character              | \[**Key variable**\] Vehicle body type (e.g., "Motorcycle", "4-door sedan") — identifies vehicle type |
+| `ROLLOVERNAME`  | vehicle              | Character              | "Rollover" vs. "No Rollover"; compare rollover rates between motorcycles and cars         |
+| `TRAV_SP`       | vehicle              | Numeric (Continuous)   | Travel speed in MPH; control for speeding as fatality risk factor                         |
+| `DEFORMEDNAME`  | vehicle              | Character              | Vehicle damage severity; proxy for crash energy and fatality risk                         |
+| `L_STATUSNAME`  | vehicle              | Character              | License status (e.g., "Valid", "Revoked"); unlicensed motorcyclists as a risk factor      |
+| `AGE`           | person               | Numeric (Continuous)   | Rider/driver age; demographic control for fatality risk                                   |
+| `SEXNAME`       | person               | Character              | Sex of person involved; demographic control                                               |
+| `PER_TYPNAME`   | person               | Character              | Person type (e.g., "Driver", "Passenger", "Pedestrian"); isolate motorcycle operators     |
+| `INJ_SEVNAME`   | person               | Character              | Injury severity (e.g., "Fatal Injury (K)", "No Apparent Injury (O)"); person-level outcome |
+| `REST_USENAME`  | person               | Character              | \[**Key variable**\] Restraint/helmet use — includes "DOT-Compliant Motorcycle Helmet"; directly tests helmet law effect |
+| `EJECTIONNAME`  | person               | Character              | "Totally Ejected", "Not Ejected"; ejection far more common in motorcycle crashes          |
+| `DRINKINGNAME`  | person               | Character              | Alcohol involvement ("Yes" / "No"); person-level control for DUI                          |
+
+## Part 3: Source Review - Gayathri
+
+> Find 5 sources about the phenomena itself (substantial knowledge about topic), not statistical methods or R
+> Full citation → author, title, publication, year
+> Annotation →  3-5 sentences about source, relevance to project, and how it'll help interpret patterns in data
+
+### Source 1
+
+#### Citation
+
+National Highway Traffic Safety Administration. Traffic Safety Facts: Motorcycles — 2023 Data. U.S. Department of Transportation, 2024.
+
+#### Annotation
+
+This federal report summarizes motorcycle fatalities, injuries, and risk exposure across the United States. It includes fatality rates per vehicle miles traveled and trends over time, which directly relate to the risk comparisons in the project. The report shows that motorcyclist fatalities remain high and provides national context for understanding crash severity patterns. This source will help interpret whether certain conditions in the dataset align with broader national risk trends. It also supports comparisons across time and exposure levels.
+
+<https://crashstats.nhtsa.dot.gov/Api/Public/ViewPublication/813732.pdf>
+
+### Source 2
+
+#### Citation
+
+Insurance Institute for Highway Safety (IIHS). Fatality Facts: Motorcycles and ATVs. IIHS, 2024.
+
+#### Annotation
+
+This source provides recent U.S. motorcycle fatality trends and demographic patterns. It reports that over 6,000 motorcyclists died in 2023 and that motorcycle deaths account for a large share of traffic fatalities despite low vehicle share. This is relevant because it highlights the disproportionate risk motorcyclists face. The information will help contextualize findings about high-risk conditions in the dataset. It also supports comparisons between motorcycles and other vehicles.
+
+<https://www.iihs.org/research-areas/fatality-statistics/detail/motorcycles-and-atvs>
+
+### Source 3
+
+#### Citation
+
+Brockhus, L. A., et al. Injury Patterns and Outcomes in Motorcycle Driver Crashes. Accident Analysis & Prevention, Elsevier, 2024.
+
+#### Annotation
+
+This study analyzes U.S. motorcycle crash outcomes and identifies key contributors to injury severity, including road conditions, speeding, alcohol use, and environmental factors. The authors emphasize that multiple crash conditions interact to influence fatality risk. This aligns directly with variables in the dataset such as weather, time, and roadway type. The source will help interpret which combinations of factors lead to more severe outcomes. It also supports using multi-variable comparisons in the visualization.
+
+<https://www.sciencedirect.com/science/article/pii/S0020138323009130>
+
+### Source 4
+
+#### Citation
+
+Doerzaph, Z., et al. Injury Risk Curves for Motorcycles in the United States. Virginia Tech Transportation Institute, 2025.
+
+#### Annotation
+
+This recent U.S.-based study models motorcycle injury risk across different crash speeds and collision scenarios. It emphasizes that crash severity depends heavily on environmental and roadway conditions. The research is relevant because the dataset includes variables such as intersection type and crash context. This source will help interpret patterns related to speed, location, and crash severity. It also supports framing the project around identifying high-risk scenarios.
+
+<https://www.researchgate.net/publication/396375322_Injury_risk_curves_for_motorcycles_in_the_United_States>
+
+### Source 5
+
+#### Citation
+
+Wang, M. H., et al. Investigating the Difference in Factors Contributing to Motorcyclist Fatalities in the United States. Transportation Safety Journal, 2022.
+
+#### Annotation
+
+This study analyzes U.S. crash data to identify factors associated with motorcycle fatalities, including roadway design, rider characteristics, and crash environment. The authors find that certain roadway features and crash contexts significantly increase fatality probability. This is directly relevant to analyzing intersection type, road conditions, and time of day. The source will help interpret patterns observed in the dataset. It also supports comparing different crash environments.
+
+<https://pmc.ncbi.nlm.nih.gov/articles/PMC9318472>
