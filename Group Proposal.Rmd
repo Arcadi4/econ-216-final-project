@@ -1,15 +1,17 @@
-# Group Topic Proposal - Econ 216
-
+---
+title: "Econ 216 - Group Topic Proposal"
+author: "Arya, Gayathri, Skylar"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readr)
 ```
-
-## Group Members
-
-Arya, Gayathri, Skylar
 
 ## Topic Idea
 
