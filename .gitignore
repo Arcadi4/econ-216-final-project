@@ -58,3 +58,6 @@ data
 # environment files
 .vscode
 .venv
+
+# macos
+.DS_Store
