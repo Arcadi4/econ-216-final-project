@@ -2,7 +2,6 @@ annotated-types==0.7.0
 certifi==2026.2.25
 cffi==2.0.0
 cryptography==46.0.5
-ndiff==7.96
 packaging==26.0
 pillow==12.1.1
 pycparser==3.0
@@ -12,3 +11,4 @@ rpds-py==0.30.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 wheel==0.46.3
+requests==2.31.0
