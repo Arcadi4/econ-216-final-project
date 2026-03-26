@@ -1,5 +1,5 @@
 ---
-title: "econ-216-EDA"
+title: "Econ 216 - EDA"
 output: html_document
 ---
 
