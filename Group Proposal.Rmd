@@ -40,9 +40,11 @@ We plan to explore how, in the past 10 years, accident and fatality rates per mi
 
 ## Part 2: Data Confirmation - Skylar
 
+### Part 2A - Load the Data
+
 [Source - FARS](https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars)
 
-### Part 2A - Load the Data
+I obtained the FARS data from the NHTSA website shown above. There's one set of dataset for each year, and NHTSA does not provide a way to download all the years at once. Luckily, the datasets' URL is standardized, so I was able to write a simple Python script to download all the datasets from 1983 to 2022. Then, I write a BASH script to unzip all the downloaded files and organize them into folders by year. The only issue is there's a typo in one of the years's dataset URL, so I had to manually download that one.
 
 Our original data set is extermely large (5.15 GiB), from 1983-2022, with very detailed data tables for each year. Generally, they are about the person, vehicle, environment, and process of the crash. The three core data tables are the `accident.csv`, `vehicle.csv`, and `person.csv`. These three tables are also washed and cleaned into more compact auxiliary tables with all the variables converted into categorical variables (represented by numerica, indexed with an appended text file in the database). The auxiliary tables are named `ACC_AUX.CSV`, `PER_AUX.CSV`, and `VEH_AUX.CSV`.
 
