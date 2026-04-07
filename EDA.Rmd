@@ -1,6 +1,7 @@
 ---
-title: "Econ 216 - EDA"
-output: html_document
+title: "ECON 216 EDA — Motorcycle Safety"
+author: "Arya, Gayathri, Skylar"
+output: pdf_document
 ---
 ```{r}
 library(tidyverse)
@@ -10,3 +11,123 @@ library(tidyverse)
 ```
 
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(readr)
+library(lubridate)
+```
+
+This document builds the shared FARS analysis dataset used in later sections. The goal here is only to load the yearly raw files, align schema differences across years, and create a cleaned joined table that downstream summaries can reuse.
+
+```{r load-raw-data}
+years <- 2011:2020
+
+acc_list <- vector("list", length(years))
+veh_list <- vector("list", length(years))
+per_list <- vector("list", length(years))
+
+for (i in seq_along(years)) {
+  year <- years[i]
+
+  if (year == 2020) {
+    base_path <- file.path("data", "FARS2020NationalCSV", "FARS2020NationalCSV")
+    accident_path <- file.path(base_path, "accident.csv")
+    vehicle_path <- file.path(base_path, "vehicle.csv")
+    person_path <- file.path(base_path, "person.csv")
+  } else {
+    base_path <- file.path("data", paste0("FARS", year, "NationalCSV"))
+    accident_path <- file.path(base_path, "ACCIDENT.CSV")
+    vehicle_path <- file.path(base_path, "VEHICLE.CSV")
+    person_path <- file.path(base_path, "PERSON.CSV")
+  }
+
+  acc_list[[i]] <- read_csv(accident_path, show_col_types = FALSE) %>%
+    mutate(YEAR = year)
+
+  veh_list[[i]] <- read_csv(vehicle_path, show_col_types = FALSE) %>%
+    mutate(YEAR = year)
+
+  per_list[[i]] <- read_csv(person_path, show_col_types = FALSE) %>%
+    mutate(YEAR = year)
+}
+
+acc_raw <- dplyr::bind_rows(acc_list)
+veh_raw <- dplyr::bind_rows(veh_list)
+per_raw <- dplyr::bind_rows(per_list)
+
+cat("Rows in acc_raw:", nrow(acc_raw), "\n")
+cat("Rows in veh_raw:", nrow(veh_raw), "\n")
+cat("Rows in per_raw:", nrow(per_raw), "\n")
+```
+
+The loading step loops over 2011 through 2020, adds a numeric `YEAR` field to each source table, and uses `bind_rows()` so columns that appear only in later years are still preserved. This is important because the 2020 files have a different directory structure and more descriptive columns than earlier files.
+
+```{r join-raw-tables}
+acc_veh <- acc_raw %>%
+  left_join(veh_raw, by = c("ST_CASE", "YEAR"))
+
+fars_full <- acc_veh %>%
+  left_join(per_raw, by = c("ST_CASE", "YEAR"))
+
+cat("Rows in acc_veh:", nrow(acc_veh), "\n")
+cat("Rows in fars_full before cleaning:", nrow(fars_full), "\n")
+```
+
+The joins are done on both `ST_CASE` and `YEAR` so crashes from different years are never accidentally merged together. Because one crash can involve multiple vehicles and multiple people, row counts increase after each join and that expansion is expected.
+
+```{r clean-and-filter-data}
+key_factor_columns <- c(
+  "STATENAME", "WEATHERNAME", "LGT_CONDNAME", "RUR_URBNAME", "SEXNAME",
+  "PER_TYPNAME", "INJ_SEVNAME", "REST_USENAME", "EJECTIONNAME",
+  "DRINKINGNAME", "FUNC_SYSNAME", "MAN_COLLNAME", "DAY_WEEKNAME",
+  "ROLLOVERNAME", "DEFORMEDNAME", "L_STATUSNAME"
+)
+
+fars_full <- fars_full %>%
+  mutate(
+    AGE = as.numeric(AGE),
+    FATALS = as.numeric(FATALS),
+    DRUNK_DR = as.numeric(DRUNK_DR),
+    TRAV_SP = as.numeric(TRAV_SP),
+    BODY_TYP = as.numeric(BODY_TYP),
+    AGE = na_if(AGE, 99),
+    TRAV_SP = if_else(TRAV_SP %in% c(997, 998, 999), NA_real_, TRAV_SP),
+    vehicle_type = case_when(
+      !is.na(BODY_TYPNAME) & str_detect(BODY_TYPNAME, regex("motorcycle", ignore_case = TRUE)) ~ "Motorcycle",
+      !is.na(BODY_TYPNAME) & str_detect(
+        BODY_TYPNAME,
+        regex("sedan|coupe|hatchback|convertible|station wagon|4-door|2-door|passenger car", ignore_case = TRUE)
+      ) ~ "Car",
+      is.na(BODY_TYPNAME) & BODY_TYP %in% 80:89 ~ "Motorcycle",
+      is.na(BODY_TYPNAME) & BODY_TYP %in% 1:9 ~ "Car",
+      TRUE ~ NA_character_
+    ),
+    helmet_used = case_when(
+      (!is.na(REST_USENAME) & str_detect(REST_USENAME, regex("helmet", ignore_case = TRUE))) |
+        (!is.na(HELM_USENAME) & str_detect(HELM_USENAME, regex("helmet", ignore_case = TRUE))) ~ TRUE,
+      is.na(REST_USENAME) & is.na(HELM_USENAME) ~ NA,
+      (!is.na(REST_USENAME) | !is.na(HELM_USENAME)) ~ FALSE,
+      TRUE ~ NA
+    )
+  ) %>%
+  mutate(
+    across(any_of(key_factor_columns), as.factor),
+    vehicle_type = factor(vehicle_type, levels = c("Motorcycle", "Car"))
+  )
+
+# Keep only motorcycle and passenger-car records because the project compares these vehicle groups.
+fars_full <- fars_full %>%
+  filter(!is.na(vehicle_type))
+
+cat("Rows in fars_full after vehicle filtering:", nrow(fars_full), "\n")
+```
+
+This cleaning step standardizes missing-value codes, creates the two-category `vehicle_type` variable despite schema drift across years, and builds a unified `helmet_used` field from the restraint and helmet name columns. The factor conversion keeps key descriptive variables ready for later grouped summaries and plots.
+
+```{r spot-check-clean-data}
+print(head(fars_full[, c("ST_CASE", "YEAR", "vehicle_type", "helmet_used", "FATALS", "AGE")], 3))
+```
+
+The final spot check confirms that the joined table contains the core identifiers and cleaned variables needed for the next EDA sections. At this stage, the document has only prepared the analysis dataset and documented the one explicit filtering step used to focus on motorcycles and passenger cars.
