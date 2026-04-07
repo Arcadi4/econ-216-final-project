@@ -5,52 +5,8 @@ output: html_document
 ```{r}
 library(tidyverse)
 
-main <- read_csv("FARS1975NationalCSV.csv")
-aux <- read_csv("FARS1975NationalAuxillaryCSV.csv")
 
-
-data <- left_join(main, aux, by = "common_id") 
+ 
 ```
 
-```{r}
-data <- data %>%
-  mutate(
-    year = as.numeric(year),
-    fatalities = as.numeric(fatalities),
-    alcohol_involved = ifelse(alcohol == 1, 1, 0)
-  )
-```
-```{r}
-data <- data %>%
-  mutate(fatality_rate = fatalities / population * 100000)
-```
-## Time Trend
-```{r}
-ggplot(data, aes(x = fatalities)) +
-  geom_histogram()
-```
-
-## Alcohol vs Fatalities
-```{r}
-ggplot(data, aes(x = year, y = fatalities)) +
-  geom_line()
-```
-
-## State Differences
-```{r}
-ggplot(data, aes(x = alcohol_involved, y = fatalities)) +
-  geom_boxplot()
-```
-
-##Time of Day
-```{r}
-ggplot(data, aes(x = hour, y = fatalities)) +
-  geom_col()
-```
-
-## Age vs Fatalities
-```{r}
-ggplot(data, aes(x = age, y = fatalities)) +
-  geom_point()
-```
 
