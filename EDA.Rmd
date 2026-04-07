@@ -44,13 +44,26 @@ for (i in seq_along(years)) {
   }
 
   acc_list[[i]] <- read_csv(accident_path, show_col_types = FALSE) %>%
-    mutate(YEAR = year)
+    mutate(
+      across(ends_with("NAME"), as.character),
+      across(starts_with("VIN"), as.character),
+      YEAR = year
+    )
 
   veh_list[[i]] <- read_csv(vehicle_path, show_col_types = FALSE) %>%
-    mutate(YEAR = year)
+    mutate(
+      across(ends_with("NAME"), as.character),
+      across(starts_with("VIN"), as.character),
+      across(starts_with("TRLR"), as.character),
+      YEAR = year
+    )
 
   per_list[[i]] <- read_csv(person_path, show_col_types = FALSE) %>%
-    mutate(YEAR = year)
+    mutate(
+      across(ends_with("NAME"), as.character),
+      across(starts_with("VIN"), as.character),
+      YEAR = year
+    )
 }
 
 acc_raw <- dplyr::bind_rows(acc_list)
@@ -131,3 +144,591 @@ print(head(fars_full[, c("ST_CASE", "YEAR", "vehicle_type", "helmet_used", "FATA
 ```
 
 The final spot check confirms that the joined table contains the core identifiers and cleaned variables needed for the next EDA sections. At this stage, the document has only prepared the analysis dataset and documented the one explicit filtering step used to focus on motorcycles and passenger cars.
+
+## Section A — Univariate Visualizations
+
+```{r section-a-helpers, echo=TRUE}
+collapse_plot_categories <- function(values, top_n = 15, prop = 0.02) {
+  values <- forcats::fct_lump_prop(values, prop = prop, other_level = "Other")
+
+  if (nlevels(values) > top_n) {
+    values <- forcats::fct_lump_n(values, n = top_n - 1, other_level = "Other")
+  }
+
+  forcats::fct_infreq(values)
+}
+
+plot_categorical_share <- function(var_name, plot_title, x_label, top_n = 15, prop = 0.02) {
+  plot_tbl <- fars_full %>%
+    filter(!is.na(.data[[var_name]])) %>%
+    mutate(plot_value = collapse_plot_categories(as.factor(.data[[var_name]]), top_n = top_n, prop = prop)) %>%
+    count(plot_value) %>%
+    mutate(
+      pct = n / sum(n),
+      plot_value = forcats::fct_reorder(plot_value, pct, .desc = FALSE)
+    )
+
+  ggplot(plot_tbl, aes(x = plot_value, y = pct)) +
+    geom_col(fill = "steelblue") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    coord_flip() +
+    labs(title = plot_title, x = x_label, y = "Proportion of Records") +
+    theme_minimal()
+}
+```
+
+```{r hist-fatals, echo=TRUE}
+fars_full %>%
+  filter(!is.na(FATALS)) %>%
+  ggplot(aes(x = FATALS)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "white", boundary = 0) +
+  labs(
+    title = "Distribution of Fatalities per Crash Record",
+    x = "Number of Fatalities",
+    y = "Count of Records"
+  ) +
+  theme_minimal()
+```
+
+Most records cluster at the lowest fatality counts, with frequencies dropping off quickly as fatalities increase. The shape suggests that higher-fatality crash records are comparatively uncommon in this analysis sample.
+
+```{r hist-age, echo=TRUE}
+fars_full %>%
+  filter(!is.na(AGE)) %>%
+  ggplot(aes(x = AGE)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white", boundary = 0) +
+  labs(
+    title = "Distribution of Person Age",
+    x = "Age (years)",
+    y = "Count of Records"
+  ) +
+  theme_minimal()
+```
+
+The age distribution is concentrated in adult ages, with relatively few records at very young or very old ages. This pattern indicates that the joined person-level records are dominated by working-age and middle-age individuals.
+
+```{r hist-trav-sp, echo=TRUE}
+fars_full %>%
+  filter(!is.na(TRAV_SP)) %>%
+  ggplot(aes(x = TRAV_SP)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", color = "white", boundary = 0) +
+  labs(
+    title = "Distribution of Reported Travel Speed",
+    x = "Travel Speed (mph)",
+    y = "Count of Records"
+  ) +
+  theme_minimal()
+```
+
+Reported travel speeds are concentrated in lower to moderate speed ranges, with a thinner right tail at higher speeds. The distribution is right-skewed, so a small share of observations accounts for the fastest reported travel speeds.
+
+```{r hist-drunk-dr, echo=TRUE}
+fars_full %>%
+  filter(!is.na(DRUNK_DR)) %>%
+  ggplot(aes(x = DRUNK_DR)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "white", boundary = 0) +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  labs(
+    title = "Distribution of Drunk Drivers Count",
+    x = "Number of Drunk Drivers",
+    y = "Count of Records"
+  ) +
+  theme_minimal()
+```
+
+Most observations fall at zero or one drunk driver, and larger counts appear much less frequently. This makes the variable highly discrete and concentrated at the low end of its support.
+
+```{r bar-vehicle-type, echo=TRUE}
+plot_categorical_share(
+  var_name = "vehicle_type",
+  plot_title = "Vehicle Type Composition in the Analysis Sample",
+  x_label = "Vehicle Type",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+The sample is split across the two project vehicle groups, so this bar chart shows the relative prevalence of motorcycles and passenger cars after filtering. It provides a quick baseline for how balanced the comparison set is before moving to grouped analysis.
+
+```{r bar-statename, echo=TRUE}
+plot_categorical_share(
+  var_name = "STATENAME",
+  plot_title = "Crash Records by State (Top 15 + Other)",
+  x_label = "State",
+  top_n = 16,
+  prop = 0
+)
+```
+
+The state distribution is concentrated in a limited set of high-count states, while the remaining states are grouped into Other. Because the `STATENAME` field is only available for 2020 in this pipeline, this chart should be interpreted as a 2020-only descriptive snapshot.
+
+```{r bar-weathername, echo=TRUE}
+plot_categorical_share(
+  var_name = "WEATHERNAME",
+  plot_title = "Crash Records by Weather Condition",
+  x_label = "Weather Condition",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Weather categories are usually dominated by clear-condition records, with smaller shares spread across rain, snow, fog, and less common conditions. The chart summarizes how strongly the observations are concentrated in a few broad weather categories.
+
+```{r bar-lgt-condname, echo=TRUE}
+plot_categorical_share(
+  var_name = "LGT_CONDNAME",
+  plot_title = "Crash Records by Light Condition",
+  x_label = "Light Condition",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Light-condition counts often cluster in daylight and dark-but-lighted settings, with smaller shares in less common visibility categories. This distribution gives context on the ambient lighting environments represented in the data.
+
+```{r bar-rur-urbname, echo=TRUE}
+plot_categorical_share(
+  var_name = "RUR_URBNAME",
+  plot_title = "Crash Records by Rural or Urban Setting",
+  x_label = "Rural or Urban Setting",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+The rural-urban split shows whether the usable records are concentrated in more urbanized or more rural roadway settings. This is a compact way to summarize the geographic context of the crash records that survive the filtering steps.
+
+```{r bar-sexname, echo=TRUE}
+plot_categorical_share(
+  var_name = "SEXNAME",
+  plot_title = "Crash Records by Person Sex",
+  x_label = "Person Sex",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+This chart shows the sex composition of the person-level records included in `fars_full`. Any imbalance here is descriptive of the observed sample and helps frame later comparisons without implying a mechanism.
+
+```{r bar-inj-sevname, echo=TRUE}
+plot_categorical_share(
+  var_name = "INJ_SEVNAME",
+  plot_title = "Crash Records by Injury Severity",
+  x_label = "Injury Severity",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Injury severity categories summarize how records are distributed across fatal, incapacitating, possible, and other injury outcomes. The relative bar heights show which severity categories are most common in the joined sample.
+
+```{r bar-rest-usename, echo=TRUE}
+plot_categorical_share(
+  var_name = "REST_USENAME",
+  plot_title = "Crash Records by Restraint or Helmet Use Category",
+  x_label = "Restraint or Helmet Use",
+  top_n = 11,
+  prop = 0.02
+)
+```
+
+`REST_USENAME` contains many detailed categories, so the chart keeps only the most common groups visible and pools the remainder into Other. That aggregation makes the restraint-use pattern easier to read while preserving the main distributional differences.
+
+```{r bar-ejectionname, echo=TRUE}
+plot_categorical_share(
+  var_name = "EJECTIONNAME",
+  plot_title = "Crash Records by Ejection Status",
+  x_label = "Ejection Status",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Ejection status is typically concentrated in a few categories, so the plot highlights whether most records involve no ejection, partial ejection, or complete ejection. The compact set of bars makes it easy to compare the dominant outcomes.
+
+```{r bar-drinkingname, echo=TRUE}
+plot_categorical_share(
+  var_name = "DRINKINGNAME",
+  plot_title = "Crash Records by Drinking Involvement",
+  x_label = "Drinking Involvement",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+The drinking-involvement distribution shows how records divide across reported drinking categories after missing values are removed. A strong concentration in one category would indicate that the observed sample is not evenly spread across these classifications.
+
+```{r bar-func-sysname, echo=TRUE}
+plot_categorical_share(
+  var_name = "FUNC_SYSNAME",
+  plot_title = "Crash Records by Functional System",
+  x_label = "Functional System",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Functional-system categories describe the roadway class associated with each record, and the chart highlights the largest groups directly. Collapsing small categories prevents the long tail of roadway types from overwhelming the main pattern.
+
+```{r bar-man-collname, echo=TRUE}
+plot_categorical_share(
+  var_name = "MAN_COLLNAME",
+  plot_title = "Crash Records by Manner of Collision",
+  x_label = "Manner of Collision",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+The manner-of-collision distribution shows which crash configurations appear most often in the available records. Grouping rarer patterns into Other keeps the figure readable while still preserving the broad shape of the distribution.
+
+```{r bar-day-weekname, echo=TRUE}
+plot_categorical_share(
+  var_name = "DAY_WEEKNAME",
+  plot_title = "Crash Records by Day of Week",
+  x_label = "Day of Week",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Day-of-week counts indicate whether crash records are spread fairly evenly across the week or more concentrated on specific days. This is a simple descriptive view of timing within the weekly cycle.
+
+```{r bar-deformedname, echo=TRUE}
+plot_categorical_share(
+  var_name = "DEFORMEDNAME",
+  plot_title = "Crash Records by Vehicle Deformation Category",
+  x_label = "Vehicle Deformation Category",
+  top_n = 15,
+  prop = 0.02
+)
+```
+
+Vehicle deformation categories summarize the reported severity of physical damage in the vehicle records. The plot shows whether observations are concentrated in a few broad damage levels or dispersed across many categories.
+
+## Section B — Relationship Visualizations
+
+```{r section-b-helpers, echo=TRUE}
+crash_vehicle_records <- fars_full %>%
+  distinct(
+    ST_CASE,
+    YEAR,
+    vehicle_type,
+    FATALS,
+    STATENAME,
+    WEATHERNAME,
+    LGT_CONDNAME,
+    RUR_URBNAME
+  )
+
+motorcycle_records <- fars_full %>%
+  filter(vehicle_type == "Motorcycle")
+
+motorcycle_crash_records <- crash_vehicle_records %>%
+  filter(vehicle_type == "Motorcycle")
+
+top_motorcycle_states <- motorcycle_records %>%
+  filter(!is.na(STATENAME)) %>%
+  count(STATENAME, sort = TRUE) %>%
+  slice_head(n = 15) %>%
+  pull(STATENAME) %>%
+  as.character()
+
+top_injury_levels <- fars_full %>%
+  filter(!is.na(INJ_SEVNAME)) %>%
+  count(INJ_SEVNAME, sort = TRUE) %>%
+  slice_head(n = 4) %>%
+  pull(INJ_SEVNAME) %>%
+  as.character()
+```
+
+```{r bar-fatality-by-vehicle-type, echo=TRUE}
+fatality_by_vehicle_type <- crash_vehicle_records %>%
+  filter(!is.na(vehicle_type), !is.na(FATALS)) %>%
+  group_by(vehicle_type) %>%
+  summarise(total_fatalities = sum(FATALS), .groups = "drop")
+
+ggplot(fatality_by_vehicle_type, aes(x = vehicle_type, y = total_fatalities, fill = vehicle_type)) +
+  geom_col(show.legend = FALSE) +
+  labs(
+    title = "Total Fatalities by Vehicle Type",
+    x = "Vehicle Type",
+    y = "Fatality Count"
+  ) +
+  theme_minimal()
+```
+
+This opening comparison shows that the total fatalities attached to motorcycle-involved crash records are high even though motorcycles represent a much smaller vehicle class than passenger cars. According to IIHS (2024), motorcyclists account for a disproportionate share of traffic fatalities relative to their share of registered vehicles, so this first plot sets up that broader descriptive imbalance. The next question is whether that difference remains once the comparison is normalized into a fatal-crash rate rather than a raw count.
+
+```{r bar-fatality-proportion-by-vehicle-type, echo=TRUE}
+fatality_proportion_by_vehicle_type <- crash_vehicle_records %>%
+  filter(!is.na(vehicle_type), !is.na(FATALS)) %>%
+  group_by(vehicle_type) %>%
+  summarise(fatality_rate = mean(FATALS > 0), .groups = "drop")
+
+ggplot(fatality_proportion_by_vehicle_type, aes(x = vehicle_type, y = fatality_rate, fill = vehicle_type)) +
+  geom_col(show.legend = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Share of Crash Records with at Least One Fatality by Vehicle Type",
+    x = "Vehicle Type",
+    y = "Proportion of Crash Records with FATALS > 0"
+  ) +
+  theme_minimal()
+```
+
+Normalizing the comparison makes the vehicle-type gap easier to interpret because it focuses on the share of crash records that include at least one fatality. If the motorcycle bar still sits above the car bar, that suggests the difference is not only about sample size but also about a higher concentration of fatal outcomes within motorcycle-involved crashes. That motivates looking at the full shape of the fatality distribution rather than only a binary fatal versus non-fatal split.
+
+```{r hist-fatals-faceted, echo=TRUE}
+crash_vehicle_records %>%
+  filter(!is.na(FATALS), !is.na(vehicle_type)) %>%
+  ggplot(aes(x = FATALS)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "white", boundary = 0) +
+  facet_wrap(~ vehicle_type, scales = "free_y") +
+  labs(
+    title = "Distribution of Fatalities per Crash Record by Vehicle Type",
+    x = "Number of Fatalities",
+    y = "Count of Crash Records"
+  ) +
+  theme_minimal()
+```
+
+The faceted histogram shows whether one vehicle group has a heavier right tail in fatalities per crash record, not just a higher share of fatal crashes overall. Both panels are likely concentrated at low fatality counts, but the relative mass in the higher-fatality bins helps clarify whether motorcycle crashes are more tightly clustered near severe outcomes. After that distributional check, the analysis can move from crash-level fatalities to person-level injury severity patterns.
+
+```{r bar-inj-sev-by-vehicle-type, echo=TRUE}
+injury_severity_by_vehicle_type <- fars_full %>%
+  filter(!is.na(vehicle_type), !is.na(INJ_SEVNAME)) %>%
+  count(vehicle_type, INJ_SEVNAME) %>%
+  group_by(vehicle_type) %>%
+  mutate(injury_share = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(INJ_SEVNAME = forcats::fct_reorder(INJ_SEVNAME, injury_share, .fun = max, .desc = TRUE))
+
+ggplot(injury_severity_by_vehicle_type, aes(x = INJ_SEVNAME, y = injury_share, fill = vehicle_type)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_flip() +
+  labs(
+    title = "Injury Severity Mix by Vehicle Type",
+    x = "Injury Severity",
+    y = "Proportion within Vehicle Type",
+    fill = "Vehicle Type"
+  ) +
+  theme_minimal()
+```
+
+This grouped bar chart shifts attention from crash-level fatalities to the distribution of injury severity categories within each vehicle type. According to Brockhus et al. (2024), injury severity in motorcycle crashes is strongly associated with multiple interacting crash conditions, so a visibly different severity mix here would be consistent with that broader descriptive literature. It also raises a follow-up question about whether ejection patterns differ across motorcycles and cars in a way that mirrors the severity distribution.
+
+```{r bar-ejection-by-vehicle-type, echo=TRUE}
+ejection_rate_by_vehicle_type <- fars_full %>%
+  filter(!is.na(vehicle_type), !is.na(EJECTIONNAME)) %>%
+  mutate(
+    ejected = case_when(
+      str_detect(as.character(EJECTIONNAME), regex("not ejected", ignore_case = TRUE)) ~ "Not Ejected",
+      TRUE ~ "Any Ejection"
+    )
+  ) %>%
+  count(vehicle_type, ejected) %>%
+  group_by(vehicle_type) %>%
+  mutate(ejection_share = n / sum(n)) %>%
+  ungroup()
+
+ggplot(ejection_rate_by_vehicle_type, aes(x = vehicle_type, y = ejection_share, fill = ejected)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Ejection Pattern by Vehicle Type",
+    x = "Vehicle Type",
+    y = "Proportion of Records",
+    fill = "Ejection Status"
+  ) +
+  theme_minimal()
+```
+
+Ejection is a useful descriptive bridge between vehicle type and injury outcomes because the share of records involving any ejection can be compared directly across the two groups. A noticeably higher ejection share for motorcycles would fit the expectation that motorcycles expose riders to different crash environments than enclosed passenger cars. That, in turn, makes it useful to ask whether the motorcycle-car contrast is stable over time or concentrated in particular years.
+
+```{r line-fatality-trend, echo=TRUE}
+fatality_trend_by_year <- crash_vehicle_records %>%
+  filter(!is.na(YEAR), !is.na(vehicle_type), !is.na(FATALS)) %>%
+  group_by(YEAR, vehicle_type) %>%
+  summarise(total_fatalities = sum(FATALS), .groups = "drop")
+
+ggplot(fatality_trend_by_year, aes(x = YEAR, y = total_fatalities, color = vehicle_type)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = 2011:2020) +
+  labs(
+    title = "Fatality Counts over Time by Vehicle Type",
+    x = "Year",
+    y = "Fatality Count",
+    color = "Vehicle Type"
+  ) +
+  theme_minimal()
+```
+
+The year-by-year line chart shows whether the motorcycle-car gap is persistent across the full 2011–2020 span rather than driven by a single outlier year. According to IIHS (2024), the overrepresentation of motorcyclists in traffic deaths is not a one-year anomaly, so a consistently elevated motorcycle series would reinforce that longer-run pattern. Once the broad time trend is established, the next set of plots narrows the focus to motorcycle-only records and asks how helmet use varies across place and outcomes.
+
+```{r bar-helmet-rate-by-state, echo=TRUE}
+helmet_rate_by_state <- motorcycle_records %>%
+  filter(!is.na(STATENAME), !is.na(helmet_used), STATENAME %in% top_motorcycle_states) %>%
+  group_by(STATENAME) %>%
+  summarise(helmet_rate = mean(helmet_used), .groups = "drop") %>%
+  mutate(STATENAME = forcats::fct_reorder(STATENAME, helmet_rate))
+
+ggplot(helmet_rate_by_state, aes(x = STATENAME, y = helmet_rate)) +
+  geom_col(fill = "steelblue") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_flip() +
+  labs(
+    title = "Helmet Use Rate by State among Motorcycle Records",
+    x = "State",
+    y = "Helmet Use Rate"
+  ) +
+  theme_minimal()
+```
+
+This state comparison looks only at motorcycle records and summarizes how often helmet use is recorded among the highest-count states in the sample. Because `STATENAME` is available only for the 2020 portion of this pipeline, the figure should be read as a one-year geographic snapshot rather than a decade-long state comparison. The spread across states naturally leads to the more direct question of how helmet use is associated with fatal outcomes within motorcycle crashes.
+
+```{r bar-fatality-by-helmet, echo=TRUE}
+fatality_by_helmet_use <- motorcycle_records %>%
+  filter(!is.na(helmet_used), !is.na(FATALS)) %>%
+  group_by(helmet_used) %>%
+  summarise(fatality_rate = mean(FATALS > 0), .groups = "drop") %>%
+  mutate(helmet_label = if_else(helmet_used, "Helmet Used", "No Helmet Recorded"))
+
+ggplot(fatality_by_helmet_use, aes(x = helmet_label, y = fatality_rate, fill = helmet_label)) +
+  geom_col(show.legend = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Fatality Rate by Helmet Use among Motorcycle Records",
+    x = "Helmet Use",
+    y = "Proportion of Records with FATALS > 0"
+  ) +
+  theme_minimal()
+```
+
+This is one of the clearest motorcycle-only comparisons because it puts helmet use next to the share of records that involve at least one fatality. According to NHTSA (2024), helmet use is one of the most effective interventions for reducing motorcyclist fatality risk, so any visible gap between these two bars would align with that descriptive safety evidence. After comparing fatality rates, it makes sense to examine whether the full injury severity profile also differs by helmet status.
+
+```{r bar-inj-sev-by-helmet-faceted, echo=TRUE}
+injury_severity_by_helmet <- motorcycle_records %>%
+  filter(!is.na(helmet_used), !is.na(INJ_SEVNAME)) %>%
+  mutate(helmet_label = if_else(helmet_used, "Helmet Used", "No Helmet Recorded")) %>%
+  count(helmet_label, INJ_SEVNAME) %>%
+  group_by(helmet_label) %>%
+  mutate(injury_share = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(INJ_SEVNAME = forcats::fct_reorder(INJ_SEVNAME, injury_share, .fun = max, .desc = TRUE))
+
+ggplot(injury_severity_by_helmet, aes(x = INJ_SEVNAME, y = injury_share, fill = helmet_label)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ helmet_label) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_flip() +
+  labs(
+    title = "Injury Severity Distribution by Helmet Use among Motorcycle Records",
+    x = "Injury Severity",
+    y = "Proportion within Helmet Group"
+  ) +
+  theme_minimal()
+```
+
+Faceting keeps the injury-severity comparison readable while still preserving the full category mix for helmeted and non-helmeted motorcycle records. Brockhus et al. (2024) emphasize that serious motorcycle injuries reflect multiple interacting conditions, so differences between these two panels should be interpreted as descriptive associations rather than a single-factor explanation. The next step is to move outward again and ask whether environmental conditions such as weather and lighting also line up with motorcycle fatalities.
+
+```{r bar-fatality-by-weather, echo=TRUE}
+top_motorcycle_weather <- motorcycle_crash_records %>%
+  filter(!is.na(WEATHERNAME)) %>%
+  count(WEATHERNAME, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(WEATHERNAME) %>%
+  as.character()
+
+motorcycle_fatalities_by_weather <- motorcycle_crash_records %>%
+  filter(!is.na(WEATHERNAME), !is.na(FATALS), WEATHERNAME %in% top_motorcycle_weather) %>%
+  group_by(WEATHERNAME) %>%
+  summarise(total_fatalities = sum(FATALS), .groups = "drop") %>%
+  mutate(WEATHERNAME = forcats::fct_reorder(WEATHERNAME, total_fatalities))
+
+ggplot(motorcycle_fatalities_by_weather, aes(x = WEATHERNAME, y = total_fatalities)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Motorcycle Fatalities by Weather Condition",
+    x = "Weather Condition",
+    y = "Fatality Count"
+  ) +
+  theme_minimal()
+```
+
+Restricting the plot to the top ten weather categories keeps the comparison readable while still showing where motorcycle fatalities are concentrated across common conditions. Since `WEATHERNAME` is available only in the 2020-style descriptive columns, this figure should be treated as a limited-condition snapshot rather than a full multi-year environmental trend. That same limitation applies to the next plot on lighting, which asks whether fatalities cluster differently across daylight and dark conditions.
+
+```{r bar-fatality-by-lgt-cond, echo=TRUE}
+motorcycle_fatalities_by_light <- motorcycle_crash_records %>%
+  filter(!is.na(LGT_CONDNAME), !is.na(FATALS)) %>%
+  group_by(LGT_CONDNAME) %>%
+  summarise(total_fatalities = sum(FATALS), .groups = "drop") %>%
+  mutate(LGT_CONDNAME = forcats::fct_reorder(LGT_CONDNAME, total_fatalities))
+
+ggplot(motorcycle_fatalities_by_light, aes(x = LGT_CONDNAME, y = total_fatalities)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Motorcycle Fatalities by Light Condition",
+    x = "Light Condition",
+    y = "Fatality Count"
+  ) +
+  theme_minimal()
+```
+
+The lighting chart complements the weather comparison by asking whether motorcycle fatalities are concentrated in daylight, dark-lighted, or dark-unlighted settings. Together, the two environmental figures help identify descriptive conditions that may be worth combining with rider-level factors later, while still avoiding any causal claim. From there, the analysis returns to a broader comparison of setting and vehicle type using rural-urban categories.
+
+```{r bar-rur-urb-by-vehicle-type, echo=TRUE}
+fatality_by_setting_and_vehicle <- crash_vehicle_records %>%
+  filter(!is.na(RUR_URBNAME), !is.na(vehicle_type), !is.na(FATALS)) %>%
+  group_by(vehicle_type, RUR_URBNAME) %>%
+  summarise(fatality_rate = mean(FATALS > 0), .groups = "drop") %>%
+  mutate(RUR_URBNAME = forcats::fct_reorder(RUR_URBNAME, fatality_rate, .fun = max, .desc = TRUE))
+
+ggplot(fatality_by_setting_and_vehicle, aes(x = RUR_URBNAME, y = fatality_rate, fill = vehicle_type)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ vehicle_type) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  coord_flip() +
+  labs(
+    title = "Fatality Proportions by Rural-Urban Setting and Vehicle Type",
+    x = "Rural or Urban Setting",
+    y = "Proportion of Crash Records with FATALS > 0",
+    fill = "Vehicle Type"
+  ) +
+  theme_minimal()
+```
+
+This faceted setting comparison checks whether the motorcycle-car fatality gap looks similar across rural and urban contexts once missing values are removed. Because the plot organizes the same setting categories inside separate vehicle-type panels, it is easier to compare patterns without overcrowding the graphic. A final natural follow-up is whether travel speed differs across injury severity levels in a way that also varies by vehicle type.
+
+```{r bar-mean-trav-sp-by-vehicle-inj, echo=TRUE}
+mean_speed_by_vehicle_and_injury <- fars_full %>%
+  filter(!is.na(vehicle_type), !is.na(INJ_SEVNAME), !is.na(TRAV_SP), INJ_SEVNAME %in% top_injury_levels) %>%
+  group_by(vehicle_type, INJ_SEVNAME) %>%
+  summarise(mean_travel_speed = mean(TRAV_SP), .groups = "drop") %>%
+  mutate(INJ_SEVNAME = forcats::fct_reorder(INJ_SEVNAME, mean_travel_speed, .fun = max))
+
+ggplot(mean_speed_by_vehicle_and_injury, aes(x = INJ_SEVNAME, y = mean_travel_speed, fill = vehicle_type)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    title = "Mean Travel Speed by Vehicle Type and Injury Severity",
+    x = "Injury Severity (Top 4 Levels)",
+    y = "Mean Travel Speed (mph)",
+    fill = "Vehicle Type"
+  ) +
+  theme_minimal()
+```
+
+Ending with mean travel speed adds one more layer of complexity by comparing a continuous variable across both vehicle type and injury severity categories. This figure is still descriptive, but it helps show whether the severity patterns explored earlier are accompanied by different typical speed levels within the top injury categories. That closes the progression from simple two-variable summaries to more structured comparisons involving time, place, environment, and rider protection.
+
+### Exploration Log
+
+I started this section with the broadest possible comparison: motorcycles versus cars on fatality counts and fatal-crash proportions. That first pass was useful because it established the main descriptive gap quickly, but it also made clear that raw totals alone were too blunt to explain much, so I moved next to the faceted fatality histogram and the injury-severity comparison. Those figures made the section feel more coherent because they shifted the story from “are the totals different?” to “how do the distributions of harm differ across the two vehicle groups?”
+
+One surprise was how naturally the ejection comparison fit into the sequence. I originally thought of it as a side plot, but it turned into a helpful bridge between the vehicle-type comparisons and the motorcycle-only helmet analysis because it pointed toward exposure and rider vulnerability without forcing a causal interpretation. A smaller dead end was the temptation to stack too many categories into a single multicolor bar chart; moving to faceting for the more complex figures made the progression much easier to read and kept the section aligned with the project guardrails.
+
+From there, one question led to the next in a fairly direct way. Once the motorcycle-car gap looked persistent over time, it made sense to zoom into motorcycle-only records and ask how helmet use differed across states and how helmet status was associated with fatality and injury severity. After that, the environmental plots on weather and light conditions added context, and the rural-urban and travel-speed figures closed the section by showing how broader crash setting variables can be layered onto the earlier relationships. Overall, the exploration moved from a simple vehicle comparison into a more connected descriptive narrative about severity, protection, setting, and conditions.
