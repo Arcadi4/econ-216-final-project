@@ -732,3 +732,215 @@ I started this section with the broadest possible comparison: motorcycles versus
 One surprise was how naturally the ejection comparison fit into the sequence. I originally thought of it as a side plot, but it turned into a helpful bridge between the vehicle-type comparisons and the motorcycle-only helmet analysis because it pointed toward exposure and rider vulnerability without forcing a causal interpretation. A smaller dead end was the temptation to stack too many categories into a single multicolor bar chart; moving to faceting for the more complex figures made the progression much easier to read and kept the section aligned with the project guardrails.
 
 From there, one question led to the next in a fairly direct way. Once the motorcycle-car gap looked persistent over time, it made sense to zoom into motorcycle-only records and ask how helmet use differed across states and how helmet status was associated with fatality and injury severity. After that, the environmental plots on weather and light conditions added context, and the rural-urban and travel-speed figures closed the section by showing how broader crash setting variables can be layered onto the earlier relationships. Overall, the exploration moved from a simple vehicle comparison into a more connected descriptive narrative about severity, protection, setting, and conditions.
+
+## Section C — Five Poster Figures
+
+### Poster Figure 1
+
+```{r poster-fig-1, echo=TRUE}
+poster_fig_1 <- crash_vehicle_records %>%
+  filter(!is.na(YEAR), !is.na(vehicle_type), !is.na(FATALS)) %>%
+  group_by(YEAR, vehicle_type) %>%
+  summarise(total_fatalities = sum(FATALS), .groups = "drop")
+
+ggplot(poster_fig_1, aes(x = YEAR, y = total_fatalities, color = vehicle_type)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = 2011:2020) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "Motorcycle vs. Car Fatalities, 2011–2020",
+    x = "Year",
+    y = "Total Fatalities",
+    color = "Vehicle Type"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+This setup figure opens the poster with the clearest broad comparison in the project: how fatalities linked to motorcycle and car crash records move over the full 2011–2020 window. It earns the first spot in the narrative because a viewer can immediately see the decade-long pattern before getting pulled into more detailed breakdowns. IIHS (2024) emphasizes that motorcyclists are overrepresented in traffic deaths relative to their presence on the road, so this figure anchors the poster in that larger descriptive context. The takeaway is that the motorcycle-versus-car contrast is not a one-panel curiosity but the starting point for the rest of the story.
+
+### Poster Figure 2
+
+```{r poster-fig-2, echo=TRUE}
+poster_fig_2 <- fars_full %>%
+  filter(!is.na(vehicle_type), !is.na(INJ_SEVNAME)) %>%
+  mutate(injury_group = forcats::fct_lump_prop(as.factor(INJ_SEVNAME), prop = 0.03, other_level = "Other")) %>%
+  count(vehicle_type, injury_group) %>%
+  group_by(vehicle_type) %>%
+  mutate(injury_share = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(injury_group = forcats::fct_reorder(injury_group, injury_share, .fun = max, .desc = TRUE))
+
+ggplot(poster_fig_2, aes(x = injury_group, y = injury_share, fill = vehicle_type)) +
+  geom_col(position = position_dodge(width = 0.8)) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(
+    title = "Injury Severity Distribution: Motorcycles vs. Cars",
+    x = "Injury Severity",
+    y = "Proportion within Vehicle Type",
+    fill = "Vehicle Type"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+This zoom-in figure takes the viewer from the broad fatality trend into the composition of injury outcomes within each vehicle group. Collapsing rarer severity categories keeps the poster readable while still preserving the main differences in the shape of the distributions. It belongs second in the arc because it answers the natural follow-up to Figure 1: not just whether motorcycles and cars differ, but where that difference appears in observed injury severity. A viewer should come away seeing that the overall contrast also shows up inside the injury mix, not only in total counts.
+
+### Poster Figure 3
+
+```{r poster-fig-3, echo=TRUE}
+poster_fig_3 <- motorcycle_records %>%
+  filter(
+    YEAR == 2020,
+    !is.na(STATENAME),
+    !is.na(helmet_used),
+    STATENAME %in% top_motorcycle_states
+  ) %>%
+  group_by(STATENAME) %>%
+  summarise(helmet_rate = mean(helmet_used), .groups = "drop") %>%
+  mutate(STATENAME = forcats::fct_reorder(STATENAME, helmet_rate))
+
+ggplot(poster_fig_3, aes(x = STATENAME, y = helmet_rate, fill = helmet_rate)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_gradient(low = "tomato", high = "steelblue") +
+  labs(
+    title = "Helmet Use Rate by State (Top 15 Motorcycle States, 2020)",
+    x = "State",
+    y = "Helmet Use Rate",
+    fill = "Helmet Rate"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+This nuance figure adds geographic texture by showing that helmet use among motorcycle records is not uniform across the highest-count states. It sits in the middle of the poster because it complicates the earlier comparison without abandoning the clear helmet-safety thread that the audience is already following. Since `STATENAME` is populated only for the 2020 data in this pipeline, the figure should be read as a 2020 snapshot rather than a decade-long state ranking. The key takeaway is that motorcycle safety patterns vary across place, so the national story has meaningful internal variation.
+
+### Poster Figure 4
+
+```{r poster-fig-4, echo=TRUE}
+poster_fig_4 <- motorcycle_crash_records %>%
+  filter(!is.na(helmet_used), !is.na(FATALS)) %>%
+  group_by(helmet_used) %>%
+  summarise(fatality_rate = mean(FATALS > 0), .groups = "drop")
+
+ggplot(poster_fig_4, aes(x = as.character(helmet_used), y = fatality_rate, fill = as.character(helmet_used))) +
+  geom_col(width = 0.65) +
+  scale_x_discrete(labels = c("TRUE" = "Helmet Used", "FALSE" = "No Helmet Recorded")) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(
+    values = c("TRUE" = "steelblue", "FALSE" = "tomato"),
+    labels = c("TRUE" = "Helmet Used", "FALSE" = "No Helmet Recorded")
+  ) +
+  labs(
+    title = "Fatality Rate by Helmet Use (Motorcycle Crashes Only)",
+    x = "Helmet Use",
+    y = "Proportion of Crash Records with FATALS > 0",
+    fill = "Helmet Use"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+This surprise figure reduces the poster to the most direct comparison in the whole sequence: two bars and one stark descriptive gap. That simplicity makes it ideal for a poster because viewers can interpret it quickly and carry the comparison with them as they move to the final panel. NHTSA (2024) identifies helmets as a major protective factor for motorcyclists, and this figure visually echoes that broader safety evidence without claiming that helmet use alone explains every difference in the data. The intended takeaway is a strong descriptive association between recorded helmet use and lower fatal involvement in motorcycle crashes.
+
+### Poster Figure 5
+
+```{r poster-fig-5, echo=TRUE}
+poster_fig_5 <- motorcycle_records %>%
+  filter(!is.na(helmet_used), !is.na(RUR_URBNAME), !is.na(INJ_SEVNAME)) %>%
+  mutate(
+    helmet_used = factor(helmet_used, levels = c(TRUE, FALSE)),
+    INJ_SEVNAME = forcats::fct_lump_prop(as.factor(INJ_SEVNAME), prop = 0.03, other_level = "Other")
+  ) %>%
+  count(helmet_used, RUR_URBNAME, INJ_SEVNAME)
+
+ggplot(poster_fig_5, aes(x = INJ_SEVNAME, y = n, fill = RUR_URBNAME)) +
+  geom_col(position = "fill") +
+  coord_flip() +
+  facet_wrap(
+    ~ helmet_used,
+    labeller = labeller(helmet_used = c(`TRUE` = "Helmet Used", `FALSE` = "No Helmet Recorded"))
+  ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Injury Severity by Helmet Use and Rural/Urban Setting (Motorcycle Crashes)",
+    x = "Injury Severity",
+    y = "Proportion within Injury Severity",
+    fill = "Rural/Urban Setting"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+This big-picture figure closes the arc by combining rider protection, injury severity, and crash setting into one structured view. Faceting by helmet status keeps the comparison readable, while the fill colors show how rural and urban settings are distributed within each severity category. Because `RUR_URBNAME` is only populated in the 2020 descriptive fields used here, the panel works best as a contextual snapshot rather than a full-period summary. A viewer should leave with the sense that motorcycle injury patterns sit inside a broader environment of protection choices and crash settings, not just a single headline difference.
+
+## Section D — Variable Rationale
+
+| Variable Name | Source Dataset | Type | Rationale for Inclusion |
+|---|---|---|---|
+| `ST_CASE` | accident / vehicle / person | Numeric (ID) | This crash-case identifier is the backbone of the full join because it lets the project connect crash, vehicle, and person records into one analysis file. Without it, none of the multi-table comparisons in the EDA would be possible. |
+| `YEAR` | accident | Numeric (Discrete) | `YEAR` makes the full 2011–2020 window usable for trend analysis and keeps crash records from different years from being merged incorrectly. It is especially important for poster figures that compare patterns across the decade rather than in a single snapshot. |
+| `STATENAME` | accident | Character | `STATENAME` provides the geographic context for the state-level helmet comparison in the poster section. Because it is only populated in the 2020 descriptive fields used here, it supports a one-year location snapshot rather than a full-period state trend. |
+| `FATALS` | accident | Numeric (Discrete) | `FATALS` is the central crash-level outcome in the document because it records how many people died in each crash. It drives the broadest comparisons in the EDA, including total fatalities, fatal-crash proportions, and several poster figures. |
+| `DRUNK_DR` | accident | Numeric (Discrete) | The count of drunk drivers in a crash adds one of the most policy-relevant behavioral risk factors in the file. Even when it is not always centered in the final poster story, it remains important for describing the severity context of motorcycle and car crashes. |
+| `RUR_URBNAME` | accident | Character | This variable captures whether crashes occurred in rural or urban settings, which helps extend the analysis beyond rider behavior into crash environment. In the EDA, it supports the final poster figure and the broader question of whether motorcycle injury patterns differ across settings. |
+| `FUNC_SYSNAME` | accident | Character | `FUNC_SYSNAME` identifies the roadway class associated with each crash, such as interstate or local roads. That makes it useful for describing whether motorcycle risk patterns appear in different roadway environments, even though those descriptive labels are only available for 2020 in this pipeline. |
+| `WEATHERNAME` | accident | Character | Weather conditions matter because motorcycles are more exposed to rain, fog, and other adverse environments than enclosed passenger vehicles. This variable supports the EDA's environmental-condition plots and helps interpret whether fatalities are concentrated in common or adverse weather categories. |
+| `LGT_CONDNAME` | accident | Character | Lighting conditions provide a second environmental lens by distinguishing daylight from dark-lighted and dark-unlighted settings. It is included because visibility is a plausible descriptive factor in motorcycle safety patterns and because it supports one of the focused environmental plots in Section B. |
+| `MAN_COLLNAME` | accident | Character | The manner-of-collision field adds information about crash configuration, such as angle or rear-end impacts. Including it broadens the EDA beyond simple outcome counts and helps characterize the kinds of crash events represented in the joined file. |
+| `DAY_WEEKNAME` | accident | Character | Day of week is a compact timing variable that helps summarize whether crashes are spread evenly across the week or concentrated on particular days. It gives the EDA a basic temporal rhythm beyond the year trend and can help frame behavioral or travel-pattern differences. |
+| `HOURNAME` | accident | Character | `HOURNAME` refines the timing story by shifting from day-level to time-of-day patterns. It is useful because motorcycle exposure and visibility conditions can vary sharply across hours, even if the final poster emphasizes broader trends and helmet comparisons. |
+| `BODY_TYPNAME` | vehicle | Character | `BODY_TYPNAME` is the clearest descriptive vehicle classification in the source files and is the main ingredient for distinguishing motorcycles from passenger cars in later years. Because body-type names are only consistently available from 2015–2020, they also highlight the schema drift the EDA has to manage. |
+| `ROLLOVERNAME` | vehicle | Character | Rollover is a meaningful crash-dynamics variable because it captures whether the crash involved vehicle overturning. Even if it is not one of the headline poster variables, it contributes to the broader severity and crash-mechanism context in the EDA. |
+| `TRAV_SP` | vehicle | Numeric (Continuous) | Travel speed is one of the most interpretable severity-related variables in the vehicle file. It appears in the relationship section because comparing average speeds across injury categories helps connect crash outcomes to a continuous measure of crash intensity. |
+| `DEFORMEDNAME` | vehicle | Character | Reported vehicle deformation offers a descriptive proxy for crash damage severity. Including it helps the EDA summarize how severe the physical impact appears across records, which complements the direct fatality and injury measures. |
+| `L_STATUSNAME` | vehicle | Character | License status provides another rider or driver background variable that can matter for interpreting crash risk patterns. It is included because legal driving status is substantively relevant to safety discussions even when it is not a centerpiece of the final poster arc. |
+| `AGE` | person | Numeric (Continuous) | Age is one of the simplest and most necessary person-level descriptors in the file. The EDA uses it to summarize who appears in the joined records and to keep the reader grounded in the demographic composition of the analysis sample. |
+| `SEXNAME` | person | Character | `SEXNAME` adds another core demographic dimension for describing the person-level records. It helps show whether the sample is heavily concentrated in one group and provides context for later severity and helmet-use comparisons. |
+| `PER_TYPNAME` | person | Character | Person type distinguishes drivers, passengers, and other roles, which matters when interpreting who the person-level records actually represent. It supports the project's effort to focus on motorcycle operators and comparable occupants rather than treating all people in the files as interchangeable. |
+| `INJ_SEVNAME` | person | Character | Injury severity is the main person-level outcome in the EDA and one of the most informative complements to the crash-level fatality count. It supports several of the strongest comparisons in the document, especially the vehicle-type and helmet-based severity distributions. |
+| `REST_USENAME` | person | Character | `REST_USENAME` is the main helmet-related source field for the earlier years in the pipeline, especially 2011–2015. It is included because the project needs a consistent helmet indicator over time, and this variable supplies much of the information used to build that measure. |
+| `EJECTIONNAME` | person | Character | Ejection status is a strong descriptive bridge between vehicle type and injury severity because it captures whether a person was thrown from the vehicle. It helps the EDA tell a more physical story about exposure differences between motorcycles and cars. |
+| `DRINKINGNAME` | person | Character | This person-level drinking indicator adds another behavioral safety dimension beyond the crash-level drunk-driver count. It is useful for describing whether alcohol involvement appears frequently in the records and for framing severity patterns in a broader risk context. |
+| `vehicle_type` | derived from `BODY_TYPNAME` and `BODY_TYP` | Factor (Derived Binary Category) | `vehicle_type` is a key derived variable because the entire project depends on a clean motorcycle-versus-car comparison across years with inconsistent schemas. Constructing it from both named and numeric body-type fields lets the EDA preserve the full 2011–2020 window instead of restricting analysis to the years with descriptive labels. |
+| `helmet_used` | derived from `REST_USENAME` and `HELM_USENAME` | Logical (Derived Binary Indicator) | `helmet_used` is the project's main rider-protection variable and one of the central inputs to the poster story. It combines `REST_USENAME` for earlier years with `HELM_USENAME` where available so that helmet-related comparisons are possible across the decade rather than only in the later files. |
+
+### Expert Sources for EDA Interpretation
+
+1. **National Highway Traffic Safety Administration. _Traffic Safety Facts: Motorcycles — 2023 Data_. U.S. Department of Transportation, 2024.** <https://crashstats.nhtsa.dot.gov/Api/Public/ViewPublication/813732.pdf>
+
+   This federal report provides the clearest national benchmark for interpreting the fatality and helmet-use patterns shown in the EDA. It is especially helpful for Figures 1 and 4 because it explains why helmet use and fatality differences are central, not peripheral, to motorcycle safety analysis. In this document, I use it less as a source of causal claims and more as a credibility anchor for the descriptive comparisons in the poster figures. It helps show that the patterns in the FARS-based EDA fit into a broader national safety conversation rather than standing alone as isolated classroom results.
+
+2. **Insurance Institute for Highway Safety. _Fatality Facts: Motorcycles and ATVs_. IIHS, 2024.** <https://www.iihs.org/research-areas/fatality-statistics/detail/motorcycles-and-atvs>
+
+   The IIHS summary is useful because it translates national motorcycle fatality patterns into a compact, readable source that supports the broad vehicle-type comparisons in the EDA. It is particularly relevant for the opening fatality figures because those plots ask viewers to compare motorcycles and cars at a high level before moving into more detailed breakdowns. For the EDA, this source helps justify why a motorcycle-versus-car contrast is a meaningful starting point for the poster narrative. It also gives outside support for describing motorcyclists as disproportionately represented in traffic fatalities.
+
+3. **Brockhus, L. A., et al. “Injury Patterns and Outcomes in Motorcycle Driver Crashes.” _Accident Analysis & Prevention_, Elsevier, 2024.**
+
+   This article is most helpful for the injury-severity and ejection portions of the EDA because it emphasizes that motorcycle crash outcomes reflect multiple interacting conditions rather than one isolated factor. That perspective fits the document's progression from simple fatality comparisons to richer views involving severity, ejection, helmet use, and environment. In the EDA context, the study supports treating the plotted relationships as descriptive patterns that should be interpreted alongside crash setting and rider protection variables. It strengthens the decision to include several severity-related variables in the rationale table instead of centering only on fatalities.
+
+4. **Doerzaph, Z., et al. _Injury Risk Curves for Motorcycles in the United States_. Virginia Tech Transportation Institute, 2025.**
+
+   This source is especially relevant for interpreting variables tied to crash intensity and context, such as travel speed, roadway setting, and collision conditions. In the EDA, it helps explain why speed and environment deserve a place in the poster even when they are not the single headline finding. The study also supports the idea that motorcycle injury risk should be read through combinations of conditions rather than through a one-variable story. That makes it a useful backdrop for the more layered figures in Section B and for the rationale behind keeping `TRAV_SP`, `RUR_URBNAME`, and roadway-condition variables in the analysis file.
+
+5. **Wang, M. H., et al. “Factors Contributing to Motorcyclist Fatalities.” _Transportation Safety Journal_, 2022.** <https://pmc.ncbi.nlm.nih.gov/articles/PMC9318472>
+
+   Wang et al. are helpful because they focus directly on the kinds of crash environments and rider characteristics that appear throughout this EDA. Their work supports the choice to include variables such as roadway setting, lighting, weather, and person-level characteristics even when some of those fields are only fully populated in 2020. For the EDA, the article reinforces that motorcycle fatality patterns are shaped by a combination of environment, crash structure, and rider factors. That framing is valuable when explaining why the poster does not stop at a single helmet comparison but instead builds a broader descriptive story around severity and setting.
+
+## Section E — Self-Assessment
+
+**1. Which poster figures do I feel most confident about, and why?**
+
+I feel most confident about Figures 1 and 4. Figure 1 uses `YEAR` across the full 2011–2020 period, so it rests on one of the most complete and stable dimensions in the cleaned file and avoids the narrower 2020-only descriptive fields. Figure 4 is also strong because it asks a very direct question with a clean binary comparison: among motorcycle crash records, how does the fatal-crash share differ by `helmet_used`? Together, those two figures are the easiest to defend because they rely on broadly available variables, simple visual structure, and a story that matches the main purpose of the project.
+
+**2. Which poster figures do I feel least confident about, and why?**
+
+I feel least confident about Figures 3 and 5. Both depend on variables that are only populated in the 2020 descriptive data used here, especially `STATENAME` in Figure 3 and `RUR_URBNAME` in Figure 5, so they are better understood as snapshots than as decade-wide summaries. That limitation does not make the figures useless, but it does narrow what I can claim from them and makes them more sensitive to how clearly I explain their scope. Compared with Figures 1 and 4, these two require more caveats, which makes them harder to present as central evidence.
+
+**3. Describe one dead end in the EDA and what I learned from it.**
+
+One dead end was my initial impulse to build per-mile fatality rates so the motorcycle-versus-car comparison would be normalized by exposure. That would have been appealing because it sounds more precise than raw counts or per-crash proportions, but FARS by itself does not provide the vehicle miles traveled denominator I would need at the same level as the crash records in this file. Once that became clear, I learned that the more defensible move was to scope the analysis to quantities I could actually support from the dataset, especially per-crash proportions and within-sample comparisons. That decision made the EDA narrower, but it also made the final figures more honest and easier to explain.
+
+**4. What feedback would be most helpful before turning this into the final poster?**
+
+The most helpful feedback would be on story-arc clarity for readers who do not already know how FARS works. I would especially like input on whether the poster makes the transition from broad vehicle comparisons to helmet and setting comparisons feel natural, or whether that sequence still needs stronger explanation. I would also want feedback on the defensibility of how I constructed `helmet_used`, since it combines `REST_USENAME` and `HELM_USENAME` across years with slightly different schemas. If those two points are clear and persuasive, I think the poster will be much easier for an outside reader to trust.
