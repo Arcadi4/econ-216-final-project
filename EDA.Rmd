@@ -47,6 +47,7 @@ for (i in seq_along(years)) {
     mutate(
       across(ends_with("NAME"), as.character),
       across(starts_with("VIN"), as.character),
+      across(any_of(c("CYLINDER", "CARBUR", "DISPLACE", "MCYCL_CY", "MCYCL_WT", "MCYCL_DS", "MAK_MOD")), ~suppressWarnings(as.numeric(as.character(.)))),
       YEAR = year
     )
 
@@ -55,6 +56,7 @@ for (i in seq_along(years)) {
       across(ends_with("NAME"), as.character),
       across(starts_with("VIN"), as.character),
       across(starts_with("TRLR"), as.character),
+      across(any_of(c("CYLINDER", "CARBUR", "DISPLACE", "MCYCL_CY", "MCYCL_WT", "MCYCL_DS", "MAK_MOD")), ~suppressWarnings(as.numeric(as.character(.)))),
       YEAR = year
     )
 
@@ -62,6 +64,7 @@ for (i in seq_along(years)) {
     mutate(
       across(ends_with("NAME"), as.character),
       across(starts_with("VIN"), as.character),
+      across(any_of(c("CYLINDER", "CARBUR", "DISPLACE", "MCYCL_CY", "MCYCL_WT", "MCYCL_DS", "MAK_MOD")), ~suppressWarnings(as.numeric(as.character(.)))),
       YEAR = year
     )
 }
@@ -82,7 +85,22 @@ acc_veh <- acc_raw %>%
   left_join(veh_raw, by = c("ST_CASE", "YEAR"))
 
 fars_full <- acc_veh %>%
-  left_join(per_raw, by = c("ST_CASE", "YEAR"))
+  left_join(per_raw, by = c("ST_CASE", "YEAR")) %>%
+  # Drop all .y duplicate columns (keep .x = left-table version).
+  select(-ends_with(".y")) %>%
+  # Drop plain-named columns that now have a .x duplicate (to avoid name collision when stripping suffix).
+  {
+    nms <- names(.)
+    x_cols <- sub("\\.x$", "", nms[endsWith(nms, ".x")])
+    select(., -any_of(x_cols[x_cols %in% nms]))
+  } %>%
+  # Strip .x suffix so column names are clean again.
+  rename_with(~sub("\\.x$", "", .), ends_with(".x")) %>%
+  # Rename BODY_TYP and BODY_TYPNAME to make their vehicle-table origin explicit.
+  rename(
+    BODY_TYP_VEH     = BODY_TYP,
+    BODY_TYPNAME_VEH = BODY_TYPNAME
+  )
 
 cat("Rows in acc_veh:", nrow(acc_veh), "\n")
 cat("Rows in fars_full before cleaning:", nrow(fars_full), "\n")
@@ -104,17 +122,17 @@ fars_full <- fars_full %>%
     FATALS = as.numeric(FATALS),
     DRUNK_DR = as.numeric(DRUNK_DR),
     TRAV_SP = as.numeric(TRAV_SP),
-    BODY_TYP = as.numeric(BODY_TYP),
+    BODY_TYP = as.numeric(BODY_TYP_VEH),
     AGE = na_if(AGE, 99),
     TRAV_SP = if_else(TRAV_SP %in% c(997, 998, 999), NA_real_, TRAV_SP),
     vehicle_type = case_when(
-      !is.na(BODY_TYPNAME) & str_detect(BODY_TYPNAME, regex("motorcycle", ignore_case = TRUE)) ~ "Motorcycle",
-      !is.na(BODY_TYPNAME) & str_detect(
-        BODY_TYPNAME,
+      !is.na(BODY_TYPNAME_VEH) & str_detect(BODY_TYPNAME_VEH, regex("motorcycle", ignore_case = TRUE)) ~ "Motorcycle",
+      !is.na(BODY_TYPNAME_VEH) & str_detect(
+        BODY_TYPNAME_VEH,
         regex("sedan|coupe|hatchback|convertible|station wagon|4-door|2-door|passenger car", ignore_case = TRUE)
       ) ~ "Car",
-      is.na(BODY_TYPNAME) & BODY_TYP %in% 80:89 ~ "Motorcycle",
-      is.na(BODY_TYPNAME) & BODY_TYP %in% 1:9 ~ "Car",
+      is.na(BODY_TYPNAME_VEH) & BODY_TYP %in% 80:89 ~ "Motorcycle",
+      is.na(BODY_TYPNAME_VEH) & BODY_TYP %in% 1:9 ~ "Car",
       TRUE ~ NA_character_
     ),
     helmet_used = case_when(
@@ -820,7 +838,7 @@ This nuance figure adds geographic texture by showing that helmet use among moto
 ### Poster Figure 4
 
 ```{r poster-fig-4, echo=TRUE}
-poster_fig_4 <- motorcycle_crash_records %>%
+poster_fig_4 <- motorcycle_records %>%
   filter(!is.na(helmet_used), !is.na(FATALS)) %>%
   group_by(helmet_used) %>%
   summarise(fatality_rate = mean(FATALS > 0), .groups = "drop")
