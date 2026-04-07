@@ -212,7 +212,7 @@ Most records cluster at the lowest fatality counts, with frequencies dropping of
 
 ```{r hist-age, echo=TRUE}
 fars_full %>%
-  filter(!is.na(AGE)) %>%
+  filter(!is.na(AGE), AGE <= 100) %>%
   ggplot(aes(x = AGE)) +
   geom_histogram(binwidth = 5, fill = "steelblue", color = "white", boundary = 0) +
   labs(
